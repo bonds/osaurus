@@ -2969,7 +2969,8 @@ extension FloatingInputCard {
                 breakdown: { displayContextBreakdown },
                 compactionState: compactionState,
                 canCompact: canCompactConversation && !isStreaming,
-                onCompact: onCompactConversation
+                onCompact: onCompactConversation,
+                routerSessionSpendMicro: sessionSpendMicro
             )
         }
     }
@@ -6891,10 +6892,16 @@ private struct ContextBreakdownPopover: View {
     /// broken when their Mac is thrashing.
     var memoryPressure: MemoryPressureAdvisory? = nil
 
+    /// This session's Osaurus Router spend in micro-USD (summed from persisted
+    /// `routerBilling`), surfaced by the Spend section.
+    var routerSessionSpendMicro: Int = 0
+
     /// Fraction of the configured quota at which the footer starts warning.
     static let diskCacheWarnFraction: Double = 0.75
 
     @Environment(\.theme) private var theme
+
+    @ObservedObject private var spendService = ProviderSpendService.shared
 
     /// Which multi-entry groups are drilled open. Starts empty so the popover
     /// opens in its compact, grouped form.
@@ -7041,6 +7048,10 @@ private struct ContextBreakdownPopover: View {
         .frame(width: 272, height: resolvedHeight)
         .onPreferenceChange(ContextPopoverHeightKey.self) { measuredContentHeight = $0 }
         .popoverCard()
+        .task {
+            // Spend is aggregate and cached for 60s; a no-op on re-opens.
+            await spendService.refreshIfStale()
+        }
     }
 
     /// The popover's content column. Extracted so `body` can wrap it in a
@@ -7070,6 +7081,13 @@ private struct ContextBreakdownPopover: View {
             if !breakdown.messages.isEmpty {
                 divider
                 messagesSection
+            }
+
+            // Spend appears once the first provider fetch lands (aggregate
+            // OpenRouter/DeepInfra totals + this session's Router spend).
+            if spendService.snapshot != nil {
+                divider
+                spendSection
             }
 
             // `isDisabled` has to pass this gate on its own: a switched-off
@@ -7469,6 +7487,69 @@ private struct ContextBreakdownPopover: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    // MARK: - Spend
+
+    /// Aggregate spend for the popover: OpenRouter/DeepInfra from the provider
+    /// usage APIs (cached 60s) plus this session's Router spend. Rows carry
+    /// the granularity each source actually reports — provider APIs expose
+    /// totals only, so no row implies per-session USD it doesn't have.
+    @ViewBuilder
+    private var spendSection: some View {
+        // Rendered only when contentStack's `spendService.snapshot != nil`
+        // gate passes; the if-let keeps this safe if ever reused elsewhere.
+        if let snapshot = spendService.snapshot {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    sectionEyebrow("Spend")
+                    Spacer(minLength: 0)
+                    if spendService.isLoading {
+                        ProgressView()
+                            .controlSize(.mini)
+                    }
+                }
+                spendRow("OpenRouter", line: snapshot.openrouter)
+                spendRow("DeepInfra", line: snapshot.deepinfra)
+                spendRow(
+                    "Router",
+                    line: ProviderSpendService.Line(
+                        configured: true,
+                        usd: Double(routerSessionSpendMicro) / 1_000_000,
+                        label: "This session"
+                    )
+                )
+                if let note = snapshot.deepinfra.note {
+                    Text(verbatim: note)
+                        .font(.system(size: 9))
+                        .foregroundColor(theme.tertiaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+    }
+
+    private func spendRow(_ name: String, line: ProviderSpendService.Line) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(verbatim: name)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(theme.secondaryText)
+            Spacer(minLength: 0)
+            Text(verbatim: Self.formatUSD(line.usd))
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(theme.primaryText)
+            Text(verbatim: line.label)
+                .font(.system(size: 9))
+                .foregroundColor(theme.tertiaryText)
+                .frame(width: 62, alignment: .trailing)
+        }
+    }
+
+    private static func formatUSD(_ usd: Double?) -> String {
+        guard let usd else { return "—" }
+        return String(format: "$%.2f", usd)
     }
 
     private func sectionEyebrow(_ title: LocalizedStringKey) -> some View {
@@ -9232,6 +9313,10 @@ private struct FloatingContextChip: View {
     var canCompact: Bool = false
     var onCompact: (() -> Void)? = nil
 
+    /// This session's Osaurus Router spend in micro-USD (summed from persisted
+    /// `routerBilling`), surfaced by the popover's Spend section.
+    var routerSessionSpendMicro: Int = 0
+
     @Environment(\.theme) private var theme
 
     @State private var showContextBreakdown = false
@@ -9339,7 +9424,8 @@ private struct FloatingContextChip: View {
                 canCompact: canCompact,
                 onCompact: onCompact,
                 diskCache: diskCacheUsage,
-                memoryPressure: memoryAdvisory
+                memoryPressure: memoryAdvisory,
+                routerSessionSpendMicro: routerSessionSpendMicro
             )
             .task(id: showContextBreakdown) {
                 // Poll while open. The cache index is a small SQLite read, but
