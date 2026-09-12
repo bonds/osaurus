@@ -865,6 +865,36 @@ public final class ChatWindowManager: NSObject, ObservableObject {
         return vf.size
     }
 
+    /// Shrink a window frame so it fits fully inside the given visible frame,
+    /// keeping the top-left anchored and pulling any overhanging edge back
+    /// on-screen. Frame autosave restores the saved frame verbatim — including
+    /// one saved on a larger display or at a higher resolution — so without
+    /// this a too-tall window's bottom edge sits below the visible area where
+    /// it can't be dragged back on-screen (the "bottom cut off" reports).
+    /// No-op when the frame already fits.
+    nonisolated static func constrainedFrame(_ frame: NSRect, to visibleFrame: NSRect) -> NSRect {
+        var rect = frame
+        if rect.width > visibleFrame.width {
+            rect.size.width = visibleFrame.width
+        }
+        if rect.height > visibleFrame.height {
+            rect.size.height = visibleFrame.height
+        }
+        if rect.maxY > visibleFrame.maxY {
+            rect.origin.y = visibleFrame.maxY - rect.height
+        }
+        if rect.minY < visibleFrame.minY {
+            rect.origin.y = visibleFrame.minY
+        }
+        if rect.maxX > visibleFrame.maxX {
+            rect.origin.x = visibleFrame.maxX - rect.width
+        }
+        if rect.minX < visibleFrame.minX {
+            rect.origin.x = visibleFrame.minX
+        }
+        return rect
+    }
+
     /// Install the SwiftUI root without letting it dictate the window size,
     /// while still letting it enforce the minimum.
     ///
@@ -984,6 +1014,17 @@ public final class ChatWindowManager: NSObject, ObservableObject {
 
         // Try to load saved frame for ALL windows to get the user's preferred size
         _ = panel.setFrameUsingName(WindowFrameAutosaveKey.chat.rawValue)
+
+        // The autosaved frame is restored verbatim and can be larger than the
+        // current screen (saved on a bigger display, or before a resolution
+        // change). Clamp it to the visible frame so no edge ends up below the
+        // menu bar / Dock where it can't be dragged back on-screen.
+        if let s = screen {
+            let clamped = Self.constrainedFrame(panel.frame, to: s.visibleFrame)
+            if clamped != panel.frame {
+                panel.setFrame(clamped, display: false)
+            }
+        }
 
         if windows.count > 1 {
             // Recalculate origin for subsequent windows in case the size changed from default
