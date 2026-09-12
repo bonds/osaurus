@@ -1343,11 +1343,13 @@ enum AgentToolLoop {
                 + recovery.loadable.sorted().joined(separator: ", ") + "."
         }
         if !recovery.workspaceBlocked.isEmpty {
-            text += " " + recovery.workspaceBlocked.sorted().joined(separator: ", ")
+            let blocked = recovery.workspaceBlocked.sorted().joined(separator: ", ")
+            let tail = recovery.exposed.contains("share_artifact") ? " (share_artifact can carry it)." : "."
+            text += " " + blocked
                 + " need a workspace attached to THIS chat and there is none, so no call can write, read or run "
                 + "files here; do not announce that again. Tell the user to attach a folder via the Folder chip "
                 + "(or enable Autonomous execution) and give them the content directly in your answer"
-                + (recovery.exposed.contains("share_artifact") ? " (share_artifact can carry it)." : ".")
+                + tail
         }
         text += " If what you described needs a tool in none of these groups, say plainly that you cannot do it "
             + "in this chat and give the user the result you have."

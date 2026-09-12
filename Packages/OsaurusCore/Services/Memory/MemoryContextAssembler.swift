@@ -88,11 +88,9 @@ public actor MemoryContextAssembler {
                 .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "-" })
                 .map(String.init)
         }
-        let knownEntities = Set(
-            recentEpisodes.flatMap(\.entities)
-                + identity.overrides.flatMap { $0.split(separator: " ").map(String.init) }
-                + factWords
-        ).filter { $0.count >= 4 }
+        let episodeEntities = recentEpisodes.flatMap(\.entities)
+        let overrideEntities = identity.overrides.flatMap { $0.split(separator: " ").map(String.init) }
+        let knownEntities = Set(episodeEntities + overrideEntities + factWords).filter { $0.count >= 4 }
 
         let section = MemoryRelevanceGate.decide(
             query: trimmedQuery,

@@ -38,11 +38,14 @@ public final class KnowledgeManager: ObservableObject {
     private var hasLoadedRegistry = false
 
     private init() {
-        initialLoad = Task.detached(priority: .userInitiated) { [weak self] in
-            let loaded = KnowledgeCollectionStore.loadAll()
-            await MainActor.run {
-                self?.adoptInitialSnapshot(loaded)
-            }
+        initialLoad = Task { [weak self] in
+            // Keep the registry enumeration off the main thread; hop back
+            // here (MainActor) only with the finished snapshot so `self`
+            // never crosses an isolation boundary.
+            let loaded = await Task.detached(priority: .userInitiated) {
+                KnowledgeCollectionStore.loadAll()
+            }.value
+            self?.adoptInitialSnapshot(loaded)
         }
     }
 
