@@ -10,12 +10,13 @@ WORKSPACE := osaurus.xcworkspace
 DERIVED := build/DerivedData
 XCODEBUILD_FLAGS ?=
 
-.PHONY: help cli app install-cli serve status test ci-test computer-use-evidence clean wa-helper wa-helper-release bench-setup bench-ingest bench-ingest-chunks bench-run bench evals-prep evals evals-verbose evals-report evals-all evals-all-verbose evals-all-report evals-deterministic evals-capture-screen evals-loop evals-matrix evals-diff evals-contribute evals-compat evals-pr-report evals-pr-report-baseline evals-watcher-report evals-scoreboard
+.PHONY: help cli app app-local install-cli serve status test ci-test computer-use-evidence clean wa-helper wa-helper-release bench-setup bench-ingest bench-ingest-chunks bench-run bench evals-prep evals evals-verbose evals-report evals-all evals-all-verbose evals-all-report evals-deterministic evals-capture-screen evals-loop evals-matrix evals-diff evals-contribute evals-compat evals-pr-report evals-pr-report-baseline evals-watcher-report evals-scoreboard
 
 help:
 	@echo "Targets:"
 	@echo "  cli            Build CLI ($(SCHEME_CLI)) into $(DERIVED)"
 	@echo "  app            Build app ($(SCHEME_APP)) and embed CLI"
+	@echo "  app-local      Build app ad-hoc signed (no Apple cert; local dev, see AGENTS.local.md)"
 	@echo "  install-cli    Install/update /usr/local/bin/osaurus symlink"
 	@echo "  serve          Build CLI and start server (use PORT=XXXX, EXPOSE=1)"
 	@echo "  status         Check if server is running"
@@ -69,6 +70,13 @@ app: cli
 	chmod +x "$(DERIVED)/Build/Products/$(CONFIG)/osaurus.app/Contents/Helpers/osaurus-plugin-host"
 	@echo "Bundling sandbox kernel (Resources/SandboxRuntime)…"
 	./scripts/build/fetch_sandbox_kernel.sh "$(DERIVED)/Build/Products/$(CONFIG)/osaurus.app/Contents/Resources/SandboxRuntime"
+
+# Local dev build: ad-hoc signs instead of the upstream team's "Apple
+# Development" cert, so contributors without that cert can build and run the
+# app locally. Same recipe as `app`; only the signing identity differs
+# (target-specific flag propagates to the `app`/`cli` prerequisites).
+app-local: XCODEBUILD_FLAGS += CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES
+app-local: app
 
 install-cli: cli
 	@echo "Installing CLI symlink…"
